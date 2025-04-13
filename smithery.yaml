@@ -28,7 +28,6 @@ startCommand:
       ],
       "env": {
         "SHOPIFY_ACCESS_TOKEN": config.accessToken,
-        "MYSHOPIFY_DOMAIN": config.domain,
-        "LOG_LEVEL": config.logLevel || "info"
+        "MYSHOPIFY_DOMAIN": config.domain
       }
     })

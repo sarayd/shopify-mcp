@@ -11,8 +11,7 @@ const UpdateCustomerInputSchema = z.object({
   phone: z.string().optional(),
   tags: z.array(z.string()).optional(),
   note: z.string().optional(),
-  // acceptsMarketing field is deprecated as it's not supported in the API
-  acceptsMarketing: z.boolean().optional(),
+  acceptsMarketing: z.boolean().optional(), // Will be converted to marketingOptInLevel
   taxExempt: z.boolean().optional(),
   metafields: z
     .array(
@@ -49,11 +48,16 @@ const updateCustomer = {
       // Convert numeric ID to GID format
       const customerGid = `gid://shopify/Customer/${id}`;
 
-      // Log a warning if acceptsMarketing was provided
+      // Prepare the customer input
+      const customerInput: any = {
+        id: customerGid,
+        ...customerFields
+      };
+
+      // Convert acceptsMarketing boolean to marketingOptInLevel if provided
       if (acceptsMarketing !== undefined) {
-        console.warn(
-          "The acceptsMarketing field is not supported by the Shopify API and will be ignored"
-        );
+        // If acceptsMarketing is true, use SINGLE_OPT_IN, otherwise use NOT_SUBSCRIBED
+        customerInput.marketingOptInLevel = acceptsMarketing ? "SINGLE_OPT_IN" : "NOT_SUBSCRIBED";
       }
 
       const query = gql`
@@ -68,6 +72,7 @@ const updateCustomer = {
               tags
               note
               taxExempt
+              marketingOptInLevel
               metafields(first: 10) {
                 edges {
                   node {
@@ -88,10 +93,7 @@ const updateCustomer = {
       `;
 
       const variables = {
-        input: {
-          id: customerGid,
-          ...customerFields
-        }
+        input: customerInput
       };
 
       const data = (await shopifyClient.request(query, variables)) as {
@@ -120,6 +122,10 @@ const updateCustomer = {
       const metafields =
         customer.metafields?.edges.map((edge: any) => edge.node) || [];
 
+      // Convert marketingOptInLevel back to acceptsMarketing boolean for backward compatibility
+      const customerAcceptsMarketing = customer.marketingOptInLevel === "SINGLE_OPT_IN" || 
+                                       customer.marketingOptInLevel === "CONFIRMED_OPT_IN";
+
       return {
         customer: {
           id: customer.id,
@@ -130,6 +136,7 @@ const updateCustomer = {
           tags: customer.tags,
           note: customer.note,
           taxExempt: customer.taxExempt,
+          acceptsMarketing: customerAcceptsMarketing, // Mapped from marketingOptInLevel
           metafields
         }
       };

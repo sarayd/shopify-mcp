@@ -103,7 +103,7 @@ const createOrder = {
               id
               name
               email
-              note
+              privateNote
               tags
               totalPrice
               subtotalPrice
@@ -188,9 +188,17 @@ const createOrder = {
         ...input
       };
 
-      // Convert customer ID to GID format if provided
+      // Map note to privateNote for the API
+      if (input.note !== undefined) {
+        draftOrderInput.privateNote = input.note;
+        delete draftOrderInput.note;
+      }
+
+      // Convert customer ID to GID format if provided and not already in GID format
       if (input.customerId) {
-        draftOrderInput.customerId = `gid://shopify/Customer/${input.customerId}`;
+        draftOrderInput.customerId = input.customerId.startsWith('gid://') 
+          ? input.customerId 
+          : `gid://shopify/Customer/${input.customerId}`;
       }
 
       // Convert variant IDs to GID format in line items if they aren't already
@@ -261,7 +269,8 @@ const createOrder = {
           id: order.id,
           name: order.name,
           email: order.email,
-          note: order.note,
+          // Map privateNote back to note for backward compatibility
+          note: order.privateNote,
           tags: order.tags,
           totalPrice: order.totalPrice,
           subtotalPrice: order.subtotalPrice,
@@ -285,11 +294,19 @@ const createOrder = {
       };
     } catch (error) {
       console.error("Error creating order:", error);
-      throw new Error(
-        `Failed to create order: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
+      // Provide more specific error messages based on error type
+      if (error instanceof Error) {
+        // Check for specific API errors and provide more helpful messages
+        if (error.message.includes("variant")) {
+          throw new Error(`Failed to create order: Invalid product variant. Please check that all variant IDs are correct.`);
+        } else if (error.message.includes("customer")) {
+          throw new Error(`Failed to create order: Invalid customer ID. Please check the customer ID format.`);
+        } else {
+          throw new Error(`Failed to create order: ${error.message}`);
+        }
+      } else {
+        throw new Error(`Failed to create order: Unknown error occurred`);
+      }
     }
   }
 };
