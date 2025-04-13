@@ -81,6 +81,35 @@ const CreateCollectionInputSchema = z.object({
 
 type CreateCollectionInput = z.infer<typeof CreateCollectionInputSchema>;
 
+// Define interfaces for the collection response
+interface CollectionRule {
+  column: string;
+  relation: string;
+  condition: string;
+}
+
+interface CollectionRuleSet {
+  rules: CollectionRule[];
+  appliedDisjunctively: boolean;
+}
+
+interface FormattedCollection {
+  id: any;
+  title: any;
+  description: any;
+  descriptionHtml: any;
+  handle: any;
+  updatedAt: any;
+  publishedAt: any;
+  seo: any;
+  image: any;
+  sortOrder: any;
+  templateSuffix: any;
+  productsCount: any;
+  metafields: any;
+  ruleSet?: CollectionRuleSet;
+}
+
 // Will be initialized in index.ts
 let shopifyClient: GraphQLClient;
 
@@ -285,7 +314,7 @@ const createCollection = {
       const metafields =
         collection.metafields?.edges.map((edge: any) => edge.node) || [];
 
-      const formattedCollection = {
+      const formattedCollection: FormattedCollection = {
         id: collection.id,
         title: collection.title,
         description: collection.description,
@@ -303,7 +332,7 @@ const createCollection = {
 
       // Add ruleSet for automated collections
       if (isAutomatedCollection && collection.ruleSet) {
-        formattedCollection['ruleSet'] = collection.ruleSet;
+        formattedCollection.ruleSet = collection.ruleSet;
       }
 
       return {
