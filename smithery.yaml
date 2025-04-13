@@ -67,29 +67,9 @@ startCommand:
         "NODE_ENV": "production"
       };
       
-      // Build command arguments
-      const args = [
-        "dist/index.js",
-        "--accessToken", config.accessToken,
-        "--domain", config.domain
-      ];
-      
-      // Add optional arguments
-      if (config.logLevel) {
-        args.push("--logLevel", config.logLevel);
-      }
-      
-      if (config.debugMode) {
-        args.push("--debug");
-      }
-      
       return {
         "command": "node",
-        "args": args,
-        "env": env,
-        "onError": (error) => {
-          console.error("Shopify MCP server error:", error.message);
-          return { shouldRestart: true, restartDelay: 5000 };
-        }
+        "args": ["dist/index.js"],
+        "env": env
       };
     }
