@@ -1,0 +1,34 @@
+# Smithery.ai configuration
+startCommand:
+  type: stdio
+configSchema:
+  type: object
+  required: ["accessToken", "domain"]
+  properties:
+    accessToken:
+      type: string
+      description: "Shopify Admin API access token"
+    domain:
+      type: string
+      description: "Your Shopify store domain (e.g., your-store.myshopify.com)"
+    logLevel:
+      type: string
+      enum: ["debug", "info", "warn", "error"]
+      default: "info"
+      description: "Log level for the MCP server"
+commandFunction: |
+  (config) => ({
+    "command": "node",
+    "args": [
+      "dist/index.js",
+      "--accessToken",
+      config.accessToken,
+      "--domain",
+      config.domain
+    ],
+    "env": {
+      "SHOPIFY_ACCESS_TOKEN": config.accessToken,
+      "MYSHOPIFY_DOMAIN": config.domain,
+      "LOG_LEVEL": config.logLevel || "info"
+    }
+  })

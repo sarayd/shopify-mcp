@@ -138,10 +138,27 @@ shopify-mcp-server --accessToken=<YOUR_ACCESS_TOKEN> --domain=<YOUR_SHOP>.myshop
      - `metafields` (array of objects, optional): Customer metafields for storing additional data
 
 3. `get-customer-orders`
+
    - Get orders for a specific customer
    - Inputs:
      - `customerId` (string, required): Shopify customer ID (numeric ID only, like "6276879810626")
      - `limit` (optional number, default: 10): Maximum number of orders to return
+
+4. `create-customer`
+   - Create a new customer in Shopify
+   - Inputs:
+     - `email` (string, required): Customer's email address
+     - `firstName` (string, optional): Customer's first name
+     - `lastName` (string, optional): Customer's last name
+     - `phone` (string, optional): Customer's phone number
+     - `tags` (array of strings, optional): Tags to apply to the customer
+     - `note` (string, optional): Note about the customer
+     - `acceptsMarketing` (boolean, optional): Whether the customer accepts marketing emails
+     - `taxExempt` (boolean, optional): Whether the customer is exempt from taxes
+     - `password` (string, optional): Password for the customer account
+     - `passwordConfirmation` (string, optional): Confirmation of the password
+     - `addresses` (array of objects, optional): Customer's addresses
+     - `metafields` (array of objects, optional): Customer metafields for storing additional data
 
 ### Order Management
 
@@ -169,6 +186,44 @@ shopify-mcp-server --accessToken=<YOUR_ACCESS_TOKEN> --domain=<YOUR_SHOP>.myshop
      - `customAttributes` (array of objects, optional): Custom attributes for the order
      - `metafields` (array of objects, optional): Order metafields
      - `shippingAddress` (object, optional): Shipping address information
+
+4. `create-order`
+
+   - Create a new draft order in Shopify
+   - Inputs:
+     - `lineItems` (array of objects, required): Products to include in the order
+       - `variantId` (string, required): ID of the product variant
+       - `quantity` (number, required): Quantity of the product
+       - `customAttributes` (array of objects, optional): Custom attributes for the line item
+     - `email` (string, optional): Customer email
+     - `phone` (string, optional): Customer phone number
+     - `note` (string, optional): Order notes
+     - `tags` (array of strings, optional): Tags for the order
+     - `customAttributes` (array of objects, optional): Custom attributes for the order
+     - `metafields` (array of objects, optional): Order metafields
+     - `billingAddress` (object, optional): Billing address information
+     - `shippingAddress` (object, optional): Shipping address information
+     - `customerId` (string, optional): ID of an existing customer
+     - `shippingLine` (object, optional): Shipping method and price
+     - `taxExempt` (boolean, optional): Whether the order is exempt from taxes
+     - `presentmentCurrencyCode` (string, optional): Currency code for the order
+
+5. `create-fulfillment`
+   - Create a new fulfillment for an order in Shopify
+   - Inputs:
+     - `orderId` (string, required): ID of the order to fulfill
+     - `notifyCustomer` (boolean, default: true): Whether to notify the customer about the fulfillment
+     - `trackingInfo` (object, optional): Tracking information
+       - `number` (string, optional): Tracking number
+       - `url` (string, optional): Tracking URL
+       - `company` (string, optional): Shipping company
+     - `lineItems` (array of objects, optional): Specific line items to fulfill
+       - `id` (string, required): ID of the line item
+       - `quantity` (number, required): Quantity to fulfill
+     - `locationId` (string, optional): ID of the location fulfilling the order
+     - `trackingNumbers` (array of strings, optional): Multiple tracking numbers
+     - `trackingUrls` (array of strings, optional): Multiple tracking URLs
+     - `metadata` (object, optional): Additional metadata for the fulfillment
 
 ## Debugging
 

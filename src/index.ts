@@ -8,6 +8,9 @@ import minimist from "minimist";
 import { z } from "zod";
 
 // Import tools
+import { createCustomer } from "./tools/createCustomer.js";
+import { createFulfillment } from "./tools/createFulfillment.js";
+import { createOrder } from "./tools/createOrder.js";
 import { getCustomerOrders } from "./tools/getCustomerOrders.js";
 import { getCustomers } from "./tools/getCustomers.js";
 import { getOrderById } from "./tools/getOrderById.js";
@@ -67,6 +70,9 @@ getOrderById.initialize(shopifyClient);
 updateOrder.initialize(shopifyClient);
 getCustomerOrders.initialize(shopifyClient);
 updateCustomer.initialize(shopifyClient);
+createCustomer.initialize(shopifyClient);
+createOrder.initialize(shopifyClient);
+createFulfillment.initialize(shopifyClient);
 
 // Set up MCP server
 const server = new McpServer({
@@ -243,6 +249,178 @@ server.tool(
   },
   async (args) => {
     const result = await updateCustomer.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the createCustomer tool
+server.tool(
+  "create-customer",
+  {
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    email: z.string().email(),
+    phone: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    note: z.string().optional(),
+    acceptsMarketing: z.boolean().optional(),
+    taxExempt: z.boolean().optional(),
+    password: z.string().optional(),
+    passwordConfirmation: z.string().optional(),
+    addresses: z
+      .array(
+        z.object({
+          address1: z.string().optional(),
+          address2: z.string().optional(),
+          city: z.string().optional(),
+          company: z.string().optional(),
+          country: z.string().optional(),
+          firstName: z.string().optional(),
+          lastName: z.string().optional(),
+          phone: z.string().optional(),
+          province: z.string().optional(),
+          zip: z.string().optional(),
+          default: z.boolean().optional()
+        })
+      )
+      .optional(),
+    metafields: z
+      .array(
+        z.object({
+          namespace: z.string(),
+          key: z.string(),
+          value: z.string(),
+          type: z.string()
+        })
+      )
+      .optional()
+  },
+  async (args) => {
+    const result = await createCustomer.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the createOrder tool
+server.tool(
+  "create-order",
+  {
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    note: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    customAttributes: z
+      .array(
+        z.object({
+          key: z.string(),
+          value: z.string()
+        })
+      )
+      .optional(),
+    metafields: z
+      .array(
+        z.object({
+          namespace: z.string(),
+          key: z.string(),
+          value: z.string(),
+          type: z.string()
+        })
+      )
+      .optional(),
+    lineItems: z.array(
+      z.object({
+        variantId: z.string(),
+        quantity: z.number().int().positive(),
+        customAttributes: z
+          .array(
+            z.object({
+              key: z.string(),
+              value: z.string()
+            })
+          )
+          .optional()
+      })
+    ),
+    billingAddress: z
+      .object({
+        address1: z.string().optional(),
+        address2: z.string().optional(),
+        city: z.string().optional(),
+        company: z.string().optional(),
+        country: z.string().optional(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        phone: z.string().optional(),
+        province: z.string().optional(),
+        zip: z.string().optional()
+      })
+      .optional(),
+    shippingAddress: z
+      .object({
+        address1: z.string().optional(),
+        address2: z.string().optional(),
+        city: z.string().optional(),
+        company: z.string().optional(),
+        country: z.string().optional(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        phone: z.string().optional(),
+        province: z.string().optional(),
+        zip: z.string().optional()
+      })
+      .optional(),
+    customerId: z.string().optional(),
+    shippingLine: z
+      .object({
+        title: z.string(),
+        price: z.string()
+      })
+      .optional(),
+    taxExempt: z.boolean().optional(),
+    presentmentCurrencyCode: z.string().optional()
+  },
+  async (args) => {
+    const result = await createOrder.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the createFulfillment tool
+server.tool(
+  "create-fulfillment",
+  {
+    orderId: z.string().min(1),
+    trackingInfo: z
+      .object({
+        number: z.string().optional(),
+        url: z.string().optional(),
+        company: z.string().optional()
+      })
+      .optional(),
+    notifyCustomer: z.boolean().default(true),
+    lineItems: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          quantity: z.number().int().positive()
+        })
+      )
+      .optional(),
+    locationId: z.string().optional(),
+    trackingNumbers: z.array(z.string()).optional(),
+    trackingUrls: z.array(z.string()).optional(),
+    metadata: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+      .optional()
+  },
+  async (args) => {
+    const result = await createFulfillment.execute(args);
     return {
       content: [{ type: "text", text: JSON.stringify(result) }]
     };
