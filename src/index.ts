@@ -8,15 +8,25 @@ import minimist from "minimist";
 import { z } from "zod";
 
 // Import tools
+import { adjustInventory } from "./tools/adjustInventory.js";
+import { connectInventoryToLocation } from "./tools/connectInventoryToLocation.js";
+import { createCollection } from "./tools/createCollection.js";
 import { createCustomer } from "./tools/createCustomer.js";
 import { createFulfillment } from "./tools/createFulfillment.js";
+import { createMetafield } from "./tools/createMetafield.js";
 import { createOrder } from "./tools/createOrder.js";
+import { createProduct } from "./tools/createProduct.js";
+import { disconnectInventoryFromLocation } from "./tools/disconnectInventoryFromLocation.js";
 import { getCustomerOrders } from "./tools/getCustomerOrders.js";
 import { getCustomers } from "./tools/getCustomers.js";
+import { getInventoryItems } from "./tools/getInventoryItems.js";
+import { getInventoryLevels } from "./tools/getInventoryLevels.js";
+import { getLocations } from "./tools/getLocations.js";
 import { getOrderById } from "./tools/getOrderById.js";
 import { getOrders } from "./tools/getOrders.js";
 import { getProductById } from "./tools/getProductById.js";
 import { getProducts } from "./tools/getProducts.js";
+import { setInventoryTracking } from "./tools/setInventoryTracking.js";
 import { updateCustomer } from "./tools/updateCustomer.js";
 import { updateOrder } from "./tools/updateOrder.js";
 
@@ -73,6 +83,17 @@ updateCustomer.initialize(shopifyClient);
 createCustomer.initialize(shopifyClient);
 createOrder.initialize(shopifyClient);
 createFulfillment.initialize(shopifyClient);
+createProduct.initialize(shopifyClient);
+createCollection.initialize(shopifyClient);
+createMetafield.initialize(shopifyClient);
+// Initialize inventory tools
+getInventoryLevels.initialize(shopifyClient);
+getInventoryItems.initialize(shopifyClient);
+getLocations.initialize(shopifyClient);
+adjustInventory.initialize(shopifyClient);
+setInventoryTracking.initialize(shopifyClient);
+connectInventoryToLocation.initialize(shopifyClient);
+disconnectInventoryFromLocation.initialize(shopifyClient);
 
 // Set up MCP server
 const server = new McpServer({
@@ -234,6 +255,11 @@ server.tool(
     phone: z.string().optional(),
     tags: z.array(z.string()).optional(),
     note: z.string().optional(),
+    // Note: acceptsMarketing is converted to marketingOptInLevel internally
+    // as the Shopify API doesn't directly support acceptsMarketing field
+    acceptsMarketing: z.boolean().optional().describe(
+      "Whether the customer accepts marketing emails. Converted to marketingOptInLevel internally."
+    ),
     taxExempt: z.boolean().optional(),
     metafields: z
       .array(
@@ -265,7 +291,11 @@ server.tool(
     phone: z.string().optional(),
     tags: z.array(z.string()).optional(),
     note: z.string().optional(),
-    acceptsMarketing: z.boolean().optional(),
+    // Note: acceptsMarketing is converted to marketingOptInLevel internally
+    // as the Shopify API doesn't directly support acceptsMarketing field
+    acceptsMarketing: z.boolean().optional().describe(
+      "Whether the customer accepts marketing emails. Converted to marketingOptInLevel internally."
+    ),
     taxExempt: z.boolean().optional(),
     password: z.string().optional(),
     passwordConfirmation: z.string().optional(),
@@ -305,7 +335,7 @@ server.tool(
   }
 );
 
-// Add the createOrder tool
+// Add the createOrder tool with fixed lineItems validation
 server.tool(
   "create-order",
   {
@@ -331,20 +361,22 @@ server.tool(
         })
       )
       .optional(),
-    lineItems: z.array(
-      z.object({
-        variantId: z.string(),
-        quantity: z.number().int().positive(),
-        customAttributes: z
-          .array(
-            z.object({
-              key: z.string(),
-              value: z.string()
-            })
-          )
-          .optional()
-      })
-    ),
+    lineItems: z
+      .array(
+        z.object({
+          variantId: z.string(),
+          quantity: z.number().int().positive(),
+          customAttributes: z
+            .array(
+              z.object({
+                key: z.string(),
+                value: z.string()
+              })
+            )
+            .optional()
+        })
+      )
+      .nonempty("At least one line item is required"),
     billingAddress: z
       .object({
         address1: z.string().optional(),
@@ -384,10 +416,46 @@ server.tool(
     presentmentCurrencyCode: z.string().optional()
   },
   async (args) => {
-    const result = await createOrder.execute(args);
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }]
-    };
+    try {
+      // Pre-process lineItems to ensure it's an array
+      let processedArgs = { ...args };
+      
+      // Handle case where lineItems might be a string (JSON)
+      if (typeof processedArgs.lineItems === 'string') {
+        try {
+          processedArgs.lineItems = JSON.parse(processedArgs.lineItems);
+          
+          // Ensure it's an array after parsing
+          if (!Array.isArray(processedArgs.lineItems)) {
+            processedArgs.lineItems = [processedArgs.lineItems];
+          }
+        } catch (error) {
+          throw new Error("Invalid lineItems format. Expected a valid JSON array.");
+        }
+      }
+      
+      // Ensure lineItems is an array
+      if (!Array.isArray(processedArgs.lineItems)) {
+        throw new Error("lineItems must be an array of product variants with quantities");
+      }
+      
+      // Validate each line item
+      processedArgs.lineItems.forEach((item, index) => {
+        if (!item.variantId) {
+          throw new Error(`Line item at index ${index} is missing variantId`);
+        }
+        if (!item.quantity || typeof item.quantity !== 'number' || item.quantity <= 0) {
+          throw new Error(`Line item at index ${index} has invalid quantity. Must be a positive number.`);
+        }
+      });
+      
+      const result = await createOrder.execute(processedArgs);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to create order: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 );
 
@@ -421,6 +489,308 @@ server.tool(
   },
   async (args) => {
     const result = await createFulfillment.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the createProduct tool
+server.tool(
+  "create-product",
+  {
+    title: z.string().min(1, "Title is required"),
+    descriptionHtml: z.string().optional(),
+    vendor: z.string().optional(),
+    productType: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    status: z.enum(["ACTIVE", "DRAFT", "ARCHIVED"]).default("ACTIVE"),
+    options: z
+      .array(
+        z.object({
+          name: z.string().min(1, "Option name is required"),
+          values: z.array(z.string()).min(1, "At least one option value is required")
+        })
+      )
+      .optional(),
+    variants: z
+      .array(
+        z.object({
+          options: z.array(z.string()),
+          price: z.string(),
+          sku: z.string().optional(),
+          weight: z.number().optional(),
+          weightUnit: z.enum(["KILOGRAMS", "GRAMS", "POUNDS", "OUNCES"]).optional(),
+          inventoryQuantity: z.number().int().optional(),
+          inventoryPolicy: z.enum(["DENY", "CONTINUE"]).optional(),
+          inventoryManagement: z.enum(["SHOPIFY", "NOT_MANAGED"]).optional(),
+          requiresShipping: z.boolean().optional(),
+          taxable: z.boolean().optional(),
+          barcode: z.string().optional()
+        })
+      )
+      .optional(),
+    images: z
+      .array(
+        z.object({
+          src: z.string().url("Image source must be a valid URL"),
+          altText: z.string().optional()
+        })
+      )
+      .optional(),
+    seo: z
+      .object({
+        title: z.string().optional(),
+        description: z.string().optional()
+      })
+      .optional(),
+    metafields: z
+      .array(
+        z.object({
+          namespace: z.string(),
+          key: z.string(),
+          value: z.string(),
+          type: z.string()
+        })
+      )
+      .optional(),
+    collectionsToJoin: z.array(z.string()).optional(),
+    giftCard: z.boolean().optional(),
+    taxCode: z.string().optional()
+  },
+  async (args) => {
+    const result = await createProduct.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the createCollection tool
+server.tool(
+  "create-collection",
+  {
+    title: z.string().min(1, "Title is required"),
+    description: z.string().optional(),
+    descriptionHtml: z.string().optional(),
+    handle: z.string().optional(),
+    isPublished: z.boolean().optional(),
+    seo: z
+      .object({
+        title: z.string().optional(),
+        description: z.string().optional()
+      })
+      .optional(),
+    image: z
+      .object({
+        src: z.string().url("Image source must be a valid URL"),
+        altText: z.string().optional()
+      })
+      .optional(),
+    productsToAdd: z.array(z.string()).optional(),
+    sortOrder: z
+      .enum([
+        "MANUAL",
+        "BEST_SELLING",
+        "ALPHA_ASC",
+        "ALPHA_DESC",
+        "PRICE_DESC",
+        "PRICE_ASC",
+        "CREATED",
+        "CREATED_DESC"
+      ])
+      .optional(),
+    templateSuffix: z.string().optional(),
+    ruleSet: z
+      .object({
+        rules: z.array(
+          z.object({
+            column: z.enum([
+              "TAG",
+              "TITLE",
+              "TYPE",
+              "VENDOR",
+              "VARIANT_PRICE",
+              "VARIANT_COMPARE_AT_PRICE",
+              "VARIANT_WEIGHT",
+              "VARIANT_INVENTORY",
+              "VARIANT_TITLE"
+            ]),
+            relation: z.enum([
+              "EQUALS",
+              "NOT_EQUALS",
+              "GREATER_THAN",
+              "LESS_THAN",
+              "STARTS_WITH",
+              "ENDS_WITH",
+              "CONTAINS",
+              "NOT_CONTAINS"
+            ]),
+            condition: z.string()
+          })
+        ),
+        appliedDisjunctively: z.boolean().default(true)
+      })
+      .optional(),
+    metafields: z
+      .array(
+        z.object({
+          namespace: z.string(),
+          key: z.string(),
+          value: z.string(),
+          type: z.string()
+        })
+      )
+      .optional()
+  },
+  async (args) => {
+    const result = await createCollection.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the createMetafield tool
+server.tool(
+  "create-metafield",
+  {
+    ownerId: z.string().min(1, "Owner ID is required"),
+    namespace: z.string().min(1, "Namespace is required"),
+    key: z.string().min(1, "Key is required"),
+    value: z.string().min(1, "Value is required"),
+    type: z.string().min(1, "Type is required"),
+    description: z.string().optional(),
+    ownerType: z.enum([
+      "ARTICLE",
+      "BLOG",
+      "COLLECTION",
+      "CUSTOMER",
+      "DRAFTORDER",
+      "ORDER",
+      "PAGE",
+      "PRODUCT",
+      "PRODUCTIMAGE",
+      "PRODUCTVARIANT",
+      "SHOP"
+    ]).default("PRODUCT")
+  },
+  async (args) => {
+    const result = await createMetafield.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add inventory-related tools
+
+// Add the getInventoryLevels tool
+server.tool(
+  "get-inventory-levels",
+  {
+    locationId: z.string().optional(),
+    limit: z.number().default(10)
+  },
+  async (args) => {
+    const result = await getInventoryLevels.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the getInventoryItems tool
+server.tool(
+  "get-inventory-items",
+  {
+    query: z.string().optional(),
+    productId: z.string().optional(),
+    variantId: z.string().optional(),
+    limit: z.number().default(10)
+  },
+  async (args) => {
+    const result = await getInventoryItems.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the getLocations tool
+server.tool(
+  "get-locations",
+  {
+    active: z.boolean().optional(),
+    limit: z.number().default(10)
+  },
+  async (args) => {
+    const result = await getLocations.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the adjustInventory tool
+server.tool(
+  "adjust-inventory",
+  {
+    inventoryItemId: z.string().min(1, "Inventory item ID is required"),
+    availableDelta: z.number().int("Delta must be an integer"),
+    locationId: z.string().min(1, "Location ID is required"),
+    reason: z.string().optional()
+  },
+  async (args) => {
+    const result = await adjustInventory.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the setInventoryTracking tool
+server.tool(
+  "set-inventory-tracking",
+  {
+    inventoryItemId: z.string().min(1, "Inventory item ID is required"),
+    tracked: z.boolean()
+  },
+  async (args) => {
+    const result = await setInventoryTracking.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the connectInventoryToLocation tool
+server.tool(
+  "connect-inventory-to-location",
+  {
+    inventoryItemId: z.string().min(1, "Inventory item ID is required"),
+    locationId: z.string().min(1, "Location ID is required"),
+    available: z.number().int("Available quantity must be an integer"),
+    reason: z.string().optional()
+  },
+  async (args) => {
+    const result = await connectInventoryToLocation.execute(args);
+    return {
+      content: [{ type: "text", text: JSON.stringify(result) }]
+    };
+  }
+);
+
+// Add the disconnectInventoryFromLocation tool
+server.tool(
+  "disconnect-inventory-from-location",
+  {
+    inventoryItemId: z.string().min(1, "Inventory item ID is required"),
+    locationId: z.string().min(1, "Location ID is required"),
+    reason: z.string().optional()
+  },
+  async (args) => {
+    const result = await disconnectInventoryFromLocation.execute(args);
     return {
       content: [{ type: "text", text: JSON.stringify(result) }]
     };
