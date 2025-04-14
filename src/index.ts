@@ -255,11 +255,6 @@ server.tool(
     phone: z.string().optional(),
     tags: z.array(z.string()).optional(),
     note: z.string().optional(),
-    // Note: acceptsMarketing is converted to marketingOptInLevel internally
-    // as the Shopify API doesn't directly support acceptsMarketing field
-    acceptsMarketing: z.boolean().optional().describe(
-      "Whether the customer accepts marketing emails. Converted to marketingOptInLevel internally."
-    ),
     taxExempt: z.boolean().optional(),
     metafields: z
       .array(
@@ -289,42 +284,12 @@ server.tool(
     lastName: z.string().optional(),
     email: z.string().email(),
     phone: z.string().optional(),
-    tags: z.array(z.string()).optional(),
-    note: z.string().optional(),
-    // Note: acceptsMarketing is converted to marketingOptInLevel internally
-    // as the Shopify API doesn't directly support acceptsMarketing field
-    acceptsMarketing: z.boolean().optional().describe(
-      "Whether the customer accepts marketing emails. Converted to marketingOptInLevel internally."
-    ),
     taxExempt: z.boolean().optional(),
-    password: z.string().optional(),
-    passwordConfirmation: z.string().optional(),
-    addresses: z
-      .array(
-        z.object({
-          address1: z.string().optional(),
-          address2: z.string().optional(),
-          city: z.string().optional(),
-          company: z.string().optional(),
-          country: z.string().optional(),
-          firstName: z.string().optional(),
-          lastName: z.string().optional(),
-          phone: z.string().optional(),
-          province: z.string().optional(),
-          zip: z.string().optional(),
-          default: z.boolean().optional()
-        })
-      )
-      .optional(),
-    metafields: z
-      .array(
-        z.object({
-          namespace: z.string(),
-          key: z.string(),
-          value: z.string(),
-          type: z.string()
-        })
-      )
+    smsMarketingConsent: z
+      .object({
+        marketingState: z.enum(["SUBSCRIBED", "NOT_SUBSCRIBED", "PENDING", "UNSUBSCRIBED"]),
+        marketingOptInLevel: z.enum(["SINGLE_OPT_IN", "CONFIRMED_OPT_IN", "UNKNOWN"]).optional()
+      })
       .optional()
   },
   async (args) => {

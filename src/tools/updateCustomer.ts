@@ -9,10 +9,13 @@ const UpdateCustomerInputSchema = z.object({
   lastName: z.string().optional(),
   email: z.string().email().optional(),
   phone: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  note: z.string().optional(),
-  acceptsMarketing: z.boolean().optional(), // Will be converted to marketingOptInLevel
   taxExempt: z.boolean().optional(),
+  smsMarketingConsent: z
+    .object({
+      marketingState: z.enum(["SUBSCRIBED", "NOT_SUBSCRIBED", "PENDING", "UNSUBSCRIBED"]),
+      marketingOptInLevel: z.enum(["SINGLE_OPT_IN", "CONFIRMED_OPT_IN", "UNKNOWN"]).optional()
+    })
+    .optional(),
   metafields: z
     .array(
       z.object({
@@ -43,22 +46,16 @@ const updateCustomer = {
 
   execute: async (input: UpdateCustomerInput) => {
     try {
-      const { id, acceptsMarketing, ...customerFields } = input;
+      const { id, ...customerFields } = input;
 
       // Convert numeric ID to GID format
       const customerGid = `gid://shopify/Customer/${id}`;
 
       // Prepare the customer input
-      const customerInput: any = {
+      const customerInput = {
         id: customerGid,
         ...customerFields
       };
-
-      // Convert acceptsMarketing boolean to marketingOptInLevel if provided
-      if (acceptsMarketing !== undefined) {
-        // If acceptsMarketing is true, use SINGLE_OPT_IN, otherwise use NOT_SUBSCRIBED
-        customerInput.marketingOptInLevel = acceptsMarketing ? "SINGLE_OPT_IN" : "NOT_SUBSCRIBED";
-      }
 
       const query = gql`
         mutation customerUpdate($input: CustomerInput!) {
@@ -69,10 +66,12 @@ const updateCustomer = {
               lastName
               email
               phone
-              tags
-              note
               taxExempt
-              marketingOptInLevel
+              smsMarketingConsent {
+                marketingState
+                marketingOptInLevel
+                consentUpdatedAt
+              }
               metafields(first: 10) {
                 edges {
                   node {
@@ -80,6 +79,7 @@ const updateCustomer = {
                     namespace
                     key
                     value
+                    type
                   }
                 }
               }
@@ -122,10 +122,6 @@ const updateCustomer = {
       const metafields =
         customer.metafields?.edges.map((edge: any) => edge.node) || [];
 
-      // Convert marketingOptInLevel back to acceptsMarketing boolean for backward compatibility
-      const customerAcceptsMarketing = customer.marketingOptInLevel === "SINGLE_OPT_IN" || 
-                                       customer.marketingOptInLevel === "CONFIRMED_OPT_IN";
-
       return {
         customer: {
           id: customer.id,
@@ -133,10 +129,8 @@ const updateCustomer = {
           lastName: customer.lastName,
           email: customer.email,
           phone: customer.phone,
-          tags: customer.tags,
-          note: customer.note,
           taxExempt: customer.taxExempt,
-          acceptsMarketing: customerAcceptsMarketing, // Mapped from marketingOptInLevel
+          smsMarketingConsent: customer.smsMarketingConsent,
           metafields
         }
       };

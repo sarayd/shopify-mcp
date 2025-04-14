@@ -8,28 +8,12 @@ const CreateCustomerInputSchema = z.object({
   lastName: z.string().optional(),
   email: z.string().email(),
   phone: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  note: z.string().optional(),
-  acceptsMarketing: z.boolean().optional(),
   taxExempt: z.boolean().optional(),
-  password: z.string().optional(),
-  passwordConfirmation: z.string().optional(),
-  addresses: z
-    .array(
-      z.object({
-        address1: z.string().optional(),
-        address2: z.string().optional(),
-        city: z.string().optional(),
-        company: z.string().optional(),
-        country: z.string().optional(),
-        firstName: z.string().optional(),
-        lastName: z.string().optional(),
-        phone: z.string().optional(),
-        province: z.string().optional(),
-        zip: z.string().optional(),
-        default: z.boolean().optional()
-      })
-    )
+  smsMarketingConsent: z
+    .object({
+      marketingState: z.enum(["SUBSCRIBED", "NOT_SUBSCRIBED", "PENDING", "UNSUBSCRIBED"]),
+      marketingOptInLevel: z.enum(["SINGLE_OPT_IN", "CONFIRMED_OPT_IN", "UNKNOWN"]).optional()
+    })
     .optional(),
   metafields: z
     .array(
@@ -63,66 +47,33 @@ const createCustomer = {
       const query = gql`
         mutation customerCreate($input: CustomerInput!) {
           customerCreate(input: $input) {
-            customer {
-              id
-              firstName
-              lastName
-              email
-              phone
-              tags
-              note
-              taxExempt
-              acceptsMarketing
-              addresses {
-                id
-                address1
-                address2
-                city
-                company
-                country
-                firstName
-                lastName
-                phone
-                province
-                zip
-              }
-              defaultAddress {
-                id
-                address1
-                address2
-                city
-                company
-                country
-                firstName
-                lastName
-                phone
-                province
-                zip
-              }
-              metafields(first: 10) {
-                edges {
-                  node {
-                    id
-                    namespace
-                    key
-                    value
-                    type
-                  }
-                }
-              }
-            }
             userErrors {
               field
               message
+            }
+            customer {
+              id
+              email
+              phone
+              taxExempt
+              firstName
+              lastName
+              amountSpent {
+                amount
+                currencyCode
+              }
+              smsMarketingConsent {
+                marketingState
+                marketingOptInLevel
+                consentUpdatedAt
+              }
             }
           }
         }
       `;
 
       const variables = {
-        input: {
-          ...input
-        }
+        input: input
       };
 
       const data = (await shopifyClient.request(query, variables)) as {
@@ -144,28 +95,9 @@ const createCustomer = {
         );
       }
 
-      // Format and return the created customer
-      const customer = data.customerCreate.customer;
-
-      // Format metafields if they exist
-      const metafields =
-        customer.metafields?.edges.map((edge: any) => edge.node) || [];
-
+      // Return the created customer directly from the API response
       return {
-        customer: {
-          id: customer.id,
-          firstName: customer.firstName,
-          lastName: customer.lastName,
-          email: customer.email,
-          phone: customer.phone,
-          tags: customer.tags,
-          note: customer.note,
-          taxExempt: customer.taxExempt,
-          acceptsMarketing: customer.acceptsMarketing,
-          addresses: customer.addresses,
-          defaultAddress: customer.defaultAddress,
-          metafields
-        }
+        customer: data.customerCreate.customer
       };
     } catch (error) {
       console.error("Error creating customer:", error);
